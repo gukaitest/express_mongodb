@@ -1,0 +1,8 @@
+# 忽略 Node.js 依赖目录
+node_modules/
+
+# 忽略环境变量文件
+.env
+
+# 忽略构建产物目录
+dist/
