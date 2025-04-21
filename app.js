@@ -13,17 +13,19 @@ db.once('open', () => {
     console.log('成功连接到 MongoDB 数据库');
 });
 
-// 定义数据模型
+// 定义商品 Schema
 const productSchema = new mongoose.Schema({
-    product_id: Number,
-    product_name: String,
-    price: String,
-    description: String,
-    stock: Number
+    product_id: { type: Number, unique: true },
+    product_name: { type: String, unique: true },
+    price: { type: Number },
+    category: { type: String },
+    stock: { type: Number },
+    description: { type: String },
+    created_at: { type: Date },
+    updated_at: { type: Date }
 });
-
 // 指定集合名为 test
-const Product = mongoose.model('Product', productSchema, 'user');
+const Product = mongoose.model('Product', productSchema, 'products');
 
 // 解析 JSON 请求体
 app.use(express.json());
@@ -55,17 +57,49 @@ app.post('/products', async (req, res) => {
     }
 });
 
-// 获取所有商品
+// // 获取所有商品
+// app.get('/products', async (req, res) => {
+//     try {
+//         const products = await Product.find();
+//         res.json(products);
+//         // 若需要打印日志，单独处理（不要在响应方法中调用）
+//         console.log('响应数据:', products); 
+//     } catch (error) {
+//         res.status(500).json({ error: error.message });
+//     }
+// });
+
+// 分页获取所有商品
 app.get('/products', async (req, res) => {
     try {
-        const products = await Product.find();
-        res.json(products);
+        // 获取请求中的 pageNo 和 pageSize 参数，若未提供则使用默认值
+        const pageNo = parseInt(req.query.pageNo) || 1;
+        const pageSize = parseInt(req.query.pageSize) || 10;
+
+        // 计算跳过的文档数量
+        const skip = (pageNo - 1) * pageSize;
+
+        // 查询当前页的数据
+        const products = await Product.find()
+           .skip(skip)
+           .limit(pageSize);
+
+        // 查询总数据数量
+        const total = await Product.countDocuments();
+
+        // 返回包含当前页数据和总数据数量的响应
+        res.json({
+            products,
+            total
+        });
+
         // 若需要打印日志，单独处理（不要在响应方法中调用）
-        console.log('响应数据:', products); 
+        console.log('响应数据:', { products, total });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
+
 // 获取用户信息
 app.get('/auth/getUserInfo', async (req, res) => {
     try {
