@@ -75,17 +75,23 @@ app.get('/products', async (req, res) => {
         // 获取请求中的 pageNo 和 pageSize 参数，若未提供则使用默认值
         const pageNo = parseInt(req.query.pageNo) || 1;
         const pageSize = parseInt(req.query.pageSize) || 10;
+        const search = req.query.search || '';
 
+        // 构建查询条件
+        const query = {};
+        if (search) {
+            query.product_name = { $regex: new RegExp(search, 'i') };
+        }
         // 计算跳过的文档数量
         const skip = (pageNo - 1) * pageSize;
 
         // 查询当前页的数据
-        const products = await Product.find()
+        const products = await Product.find(query)
            .skip(skip)
            .limit(pageSize);
 
         // 查询总数据数量
-        const total = await Product.countDocuments();
+        const total = await Product.countDocuments(query);
 
         // 返回包含当前页数据和总数据数量的响应
         res.json({
