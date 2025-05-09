@@ -95,8 +95,13 @@ app.get('/products', async (req, res) => {
 
         // 返回包含当前页数据和总数据数量的响应
         res.json({
-            products,
-            total
+            code: "0000",
+            msg: "请求成功",
+            data: {
+                products,
+                total
+            }
+        
         });
 
         // 若需要打印日志，单独处理（不要在响应方法中调用）
