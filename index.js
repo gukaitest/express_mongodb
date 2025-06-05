@@ -9,7 +9,7 @@ const fse = require('fs-extra');
 const path = require('path');
 
 const app = express();
-const PORT = 3002;
+const PORT = 3000;
 
 // 初始化配置
 // connectDB();
