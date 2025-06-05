@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git  branch: 'main', 'https://github.com/gukaitest/express_mongodb.git'
+                git  branch: 'main',  url:'https://github.com/gukaitest/express_mongodb.git'
             }
         }
         stage('Build Docker Image') {
