@@ -1,0 +1,37 @@
+pipeline {
+    agent any
+    environment {
+        DOCKER_IMAGE = "node-backend:latest"
+        CONTAINER_NAME = "backend"
+        NETWORK = "app-network"
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/gukaitest/express_mongodb.git'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${DOCKER_IMAGE}")
+                }
+            }
+        }
+        stage('Deploy') {
+            steps {
+                script {
+                    sh "docker stop ${CONTAINER_NAME} || true"
+                    sh "docker rm ${CONTAINER_NAME} || true"
+                    sh """
+                    docker run -d \
+                        --name ${CONTAINER_NAME} \
+                        --network ${NETWORK} \
+                        -p 3000:3000 \
+                        ${DOCKER_IMAGE}
+                    """
+                }
+            }
+        }
+    }
+}
