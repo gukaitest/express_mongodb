@@ -5,14 +5,14 @@ pipeline {
         CONTAINER_NAME = "backend"
     }
     stages {
-        // stage('Checkout') {
-        //     steps {
-        //         git(
-        //             branch: 'main',
-        //             url: 'https://github.com/gukaitest/express_mongodb.git'
-        //         )
-        //     }
-        // }
+        stage('Checkout') {
+            steps {
+                git(
+                    branch: 'main',
+                    url: 'https://github.com/gukaitest/express_mongodb.git'
+                )
+            }
+        }
         stage('Build Docker Image') {
             steps {
                 sh "docker build -t ${DOCKER_IMAGE} ." // 直接调用 Shell 命令
