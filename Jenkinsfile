@@ -8,29 +8,28 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git  branch: 'main',  url:'https://github.com/gukaitest/express_mongodb.git'
+                git(
+                    branch: 'main',
+                    url: 'https://github.com/gukaitest/express_mongodb.git'
+                )
             }
         }
         stage('Build Docker Image') {
             steps {
-                script {
-                    docker.build("${DOCKER_IMAGE}")
-                }
+                sh "docker build -t ${DOCKER_IMAGE} ." // 直接调用 Shell 命令
             }
         }
         stage('Deploy') {
             steps {
-                script {
-                    sh "docker stop ${CONTAINER_NAME} || true"
-                    sh "docker rm ${CONTAINER_NAME} || true"
-                    sh """
-                    docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        --network ${NETWORK} \
-                        -p 3000:3000 \
-                        ${DOCKER_IMAGE}
-                    """
-                }
+                sh "docker stop ${CONTAINER_NAME} || true"
+                sh "docker rm ${CONTAINER_NAME} || true"
+                sh """
+                docker run -d \
+                    --name ${CONTAINER_NAME} \
+                    --network ${NETWORK} \
+                    -p 3000:3000 \
+                    ${DOCKER_IMAGE}
+                """
             }
         }
     }
