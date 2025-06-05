@@ -3,7 +3,6 @@ pipeline {
     environment {
         DOCKER_IMAGE = "node-backend:latest"
         CONTAINER_NAME = "backend"
-        NETWORK = "app-network"
     }
     stages {
         // stage('Checkout') {
@@ -26,7 +25,6 @@ pipeline {
                 sh """
                 docker run -d \
                     --name ${CONTAINER_NAME} \
-                    --network ${NETWORK} \
                     -p 3000:3000 \
                     ${DOCKER_IMAGE}
                 """
