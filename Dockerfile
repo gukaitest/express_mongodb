@@ -1,5 +1,5 @@
 # 使用官方Node.js镜像作为基础
-FROM node:14-alpine
+FROM node:16-alpine
 
 # 设置工作目录
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN npm install --production
 COPY . .
 
 # 暴露端口
-EXPOSE 80
+EXPOSE 3000
 
 # 启动应用
 # CMD ["npm", "start"]
