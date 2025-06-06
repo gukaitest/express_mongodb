@@ -14,7 +14,7 @@ RUN npm install --production
 COPY . .
 
 # 暴露端口
-EXPOSE 8084
+EXPOSE 80
 
 # 启动应用
 # CMD ["npm", "start"]

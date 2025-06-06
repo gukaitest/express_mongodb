@@ -25,7 +25,7 @@ pipeline {
                 sh """
                 docker run -d \
                     --name ${CONTAINER_NAME} \
-                    -p 8084:8084 \
+                    -p 8084:80 \
                     ${DOCKER_IMAGE}
                 """
             }
