@@ -22,13 +22,13 @@ pipeline {
             steps {
                 sh "docker stop ${CONTAINER_NAME} || true"
                 sh "docker rm ${CONTAINER_NAME} || true"
-                sh """
+                sh '''
                 docker run -d \
                     --name ${CONTAINER_NAME} \
                     -p 8084:3000 \
-                    -e DB_URL=mongodb://47.103.169.121:27017/product_info \ 
+                    -e DB_URL=mongodb://47.103.169.121:27017/product_info \
                     ${DOCKER_IMAGE}
-                """
+                '''
             }
     
         }
