@@ -1,6 +1,6 @@
 const express = require('express');
 const connectDB = require('./config/db');
-const cors = require('./middlewares/cors');
+// const cors = require('./middlewares/cors');
 const errorHandler = require('./middlewares/errorHandler');
 const productRoutes = require('./routes/productRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
