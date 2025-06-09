@@ -6,8 +6,8 @@ const {
 
 } = require('../controllers/productController');
 
-router.post('/', createProduct);
-router.get('/', getProducts);
+router.post('/products', createProduct);
+router.get('/products', getProducts);
 
 
 // const {
