@@ -14,7 +14,11 @@ const PORT = 3000;
 // 初始化配置
 // connectDB();
 // app.use(express.json());
-app.use(cors);
+// app.use(cors);
+app.use(cors({
+  origin: 'http://47.103.169.121:8083', // 仅限前端域名
+  credentials: true
+}));
 
 // 初始化上传目录
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
