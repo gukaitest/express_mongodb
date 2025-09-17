@@ -1,0 +1,1 @@
+﻿root = true[*]end_of_line = lfinsert_final_newline = truecharset = utf-8indent_style = spaceindent_size = 2max_line_length = 80

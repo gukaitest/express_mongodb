@@ -1,5 +1,5 @@
 {
-  "name": "express-mongodb",
+  "name": "express-test",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -9,7 +9,7 @@
   },
   "author": "",
   "license": "ISC",
-  "description": "Express MongoDB 主项目",
+  "description": "",
   "dependencies": {
     "cors": "^2.8.5",
     "ejs": "^3.1.10",
@@ -18,9 +18,5 @@
     "mongoose": "^8.14.1",
     "multer": "^1.4.5-lts.2",
     "multiparty": "^4.2.3"
-  },
-  "devDependencies": {
-    "eslint": "^9.35.0",
-    "prettier": "^3.6.2"
   }
 }
