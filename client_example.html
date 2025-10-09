@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>用户行为监控客户端示例</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      h1 {
+        color: #333;
+        border-bottom: 2px solid #4caf50;
+        padding-bottom: 10px;
+      }
+      h2 {
+        color: #666;
+        margin-top: 20px;
+      }
+      button {
+        background-color: #4caf50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 5px;
+        font-size: 14px;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      .log {
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        margin-top: 10px;
+        max-height: 400px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .log-entry {
+        margin: 5px 0;
+        padding: 5px;
+        border-left: 3px solid #4caf50;
+        background-color: white;
+      }
+      .error {
+        border-left-color: #f44336;
+        color: #f44336;
+      }
+      .info {
+        border-left-color: #2196f3;
+        color: #333;
+      }
+      .success {
+        border-left-color: #4caf50;
+        color: #4caf50;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+      }
+      .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+      }
+      .stat-value {
+        font-size: 32px;
+        font-weight: bold;
+        margin: 10px 0;
+      }
+      .stat-label {
+        font-size: 14px;
+        opacity: 0.9;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔍 用户行为监控客户端示例</h1>
+      <p>这个页面演示了如何使用新的用户行为监控API</p>
+    </div>
+
+    <div class="container">
+      <h2>📊 模拟用户行为</h2>
+      <button onclick="trackSessionStart()">会话开始</button>
+      <button onclick="trackPageView()">页面浏览</button>
+      <button onclick="trackClick()">点击事件</button>
+      <button onclick="trackScroll()">滚动事件</button>
+      <button onclick="trackInput()">输入事件</button>
+      <button onclick="trackFocus()">焦点事件</button>
+      <button onclick="trackBlur()">失焦事件</button>
+      <button onclick="trackResize()">窗口调整</button>
+      <button onclick="trackCustom()">自定义事件</button>
+    </div>
+
+    <div class="container">
+      <h2>📈 查询数据</h2>
+      <button onclick="getStats()">获取统计信息</button>
+      <button onclick="getTopBehaviors()">获取热门行为</button>
+      <button onclick="getUserPaths()">获取用户路径</button>
+      <button onclick="clearLog()">清空日志</button>
+    </div>
+
+    <div class="container">
+      <h2>📝 操作日志</h2>
+      <div id="log" class="log"></div>
+    </div>
+
+    <script>
+      // 配置
+      const API_BASE_URL = 'http://localhost:3000/monitor/behaviors';
+
+      // 生成会话ID
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const userId = localStorage.getItem('userId') || '';
+
+      // 日志函数
+      function addLog(message, type = 'info') {
+        const log = document.getElementById('log');
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        log.insertBefore(entry, log.firstChild);
+      }
+
+      function clearLog() {
+        document.getElementById('log').innerHTML = '';
+        addLog('日志已清空', 'info');
+      }
+
+      // 生成 behaviorId (简单的base64编码)
+      function generateBehaviorId(type, action) {
+        const str = `${type}_${action}_${Date.now()}`;
+        return btoa(str).substring(0, 16);
+      }
+
+      // 发送行为数据
+      async function sendBehavior(behaviorData) {
+        try {
+          addLog(
+            `发送行为数据: ${behaviorData.type} - ${behaviorData.action}`,
+            'info'
+          );
+
+          const response = await fetch(API_BASE_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(behaviorData),
+          });
+
+          const result = await response.json();
+
+          if (result.code === '0000') {
+            addLog(`✅ 行为记录成功: ${result.data._id}`, 'success');
+          } else {
+            addLog(`❌ 行为记录失败: ${result.msg}`, 'error');
+          }
+
+          return result;
+        } catch (error) {
+          addLog(`❌ 请求失败: ${error.message}`, 'error');
+          console.error(error);
+        }
+      }
+
+      // 模拟会话开始
+      async function trackSessionStart() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('session_start', 'session_start'),
+          type: 'session_start',
+          action: 'session_start',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: performance.now(),
+          level: 'high',
+          customData: {
+            referrer: document.referrer,
+            screenResolution: `${screen.width}x${screen.height}`,
+            language: navigator.language,
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟页面浏览
+      async function trackPageView() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('page_view', 'page_view'),
+          type: 'page_view',
+          action: 'page_view',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: Math.round(performance.now()),
+          level: 'medium',
+          customData: {
+            title: document.title,
+            referrer: document.referrer,
+            viewportSize: `${window.innerWidth}x${window.innerHeight}`,
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟点击事件
+      async function trackClick() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('click', 'button_click'),
+          type: 'click',
+          action: 'button_click_test',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: 0,
+          level: 'medium',
+          customData: {
+            elementId: 'test-button',
+            elementClass: 'btn btn-primary',
+            elementText: '测试按钮',
+            clickPosition: { x: 100, y: 200 },
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟滚动事件
+      async function trackScroll() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('scroll', 'page_scroll'),
+          type: 'scroll',
+          action: 'page_scroll_down',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: 0,
+          level: 'low',
+          customData: {
+            scrollY: window.scrollY,
+            scrollDepth: Math.round(
+              (window.scrollY / document.body.scrollHeight) * 100
+            ),
+            documentHeight: document.body.scrollHeight,
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟输入事件
+      async function trackInput() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('input', 'form_input'),
+          type: 'input',
+          action: 'form_input_search',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: 0,
+          level: 'medium',
+          customData: {
+            fieldName: 'search',
+            fieldType: 'text',
+            inputLength: 10,
+            inputValue: '示例搜索',
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟焦点事件
+      async function trackFocus() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('focus', 'element_focus'),
+          type: 'focus',
+          action: 'input_focus',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: 0,
+          level: 'low',
+          customData: {
+            elementId: 'search-input',
+            elementType: 'input',
+            fieldName: 'search',
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟失焦事件
+      async function trackBlur() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('blur', 'element_blur'),
+          type: 'blur',
+          action: 'input_blur',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: 0,
+          level: 'low',
+          customData: {
+            elementId: 'search-input',
+            elementType: 'input',
+            fieldName: 'search',
+            inputValue: '用户输入内容',
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟窗口调整事件
+      async function trackResize() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('resize', 'window_resize'),
+          type: 'resize',
+          action: 'window_resize',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: 0,
+          level: 'low',
+          customData: {
+            oldSize: {
+              width: window.innerWidth - 100,
+              height: window.innerHeight - 50,
+            },
+            newSize: {
+              width: window.innerWidth,
+              height: window.innerHeight,
+            },
+            orientation:
+              window.innerWidth > window.innerHeight ? 'landscape' : 'portrait',
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 模拟自定义事件
+      async function trackCustom() {
+        const behaviorData = {
+          behaviorId: generateBehaviorId('custom', 'custom_action'),
+          type: 'custom',
+          action: 'custom_test_action',
+          userId: userId,
+          sessionId: sessionId,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timestamp: Date.now(),
+          pageLoadTime: 0,
+          level: 'high',
+          customData: {
+            eventCategory: 'test',
+            eventLabel: 'custom_event',
+            eventValue: 123,
+            additionalInfo: {
+              key1: 'value1',
+              key2: 'value2',
+            },
+          },
+        };
+
+        await sendBehavior(behaviorData);
+      }
+
+      // 获取统计信息
+      async function getStats() {
+        try {
+          addLog('正在获取统计信息...', 'info');
+
+          const response = await fetch(`${API_BASE_URL}/stats`);
+          const result = await response.json();
+
+          if (result.code === '0000') {
+            addLog('✅ 统计信息获取成功', 'success');
+            addLog(JSON.stringify(result.data, null, 2), 'info');
+          } else {
+            addLog(`❌ 获取失败: ${result.msg}`, 'error');
+          }
+        } catch (error) {
+          addLog(`❌ 请求失败: ${error.message}`, 'error');
+        }
+      }
+
+      // 获取热门行为
+      async function getTopBehaviors() {
+        try {
+          addLog('正在获取热门行为...', 'info');
+
+          const response = await fetch(`${API_BASE_URL}/top?limit=5`);
+          const result = await response.json();
+
+          if (result.code === '0000') {
+            addLog('✅ 热门行为获取成功', 'success');
+            addLog(JSON.stringify(result.data, null, 2), 'info');
+          } else {
+            addLog(`❌ 获取失败: ${result.msg}`, 'error');
+          }
+        } catch (error) {
+          addLog(`❌ 请求失败: ${error.message}`, 'error');
+        }
+      }
+
+      // 获取用户路径
+      async function getUserPaths() {
+        try {
+          addLog('正在获取用户路径...', 'info');
+
+          const response = await fetch(
+            `${API_BASE_URL}/paths?sessionId=${sessionId}&limit=10`
+          );
+          const result = await response.json();
+
+          if (result.code === '0000') {
+            addLog('✅ 用户路径获取成功', 'success');
+            addLog(JSON.stringify(result.data, null, 2), 'info');
+          } else {
+            addLog(`❌ 获取失败: ${result.msg}`, 'error');
+          }
+        } catch (error) {
+          addLog(`❌ 请求失败: ${error.message}`, 'error');
+        }
+      }
+
+      // 页面加载时自动记录会话开始
+      window.addEventListener('load', () => {
+        addLog(`会话ID: ${sessionId}`, 'info');
+        addLog(`用户ID: ${userId || '(未设置)'}`, 'info');
+        addLog('页面已加载，可以开始测试...', 'success');
+      });
+
+      // 监听页面滚动（防抖）
+      let scrollTimeout;
+      window.addEventListener('scroll', () => {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          console.log('Scroll detected at:', window.scrollY);
+        }, 500);
+      });
+    </script>
+  </body>
+</html>

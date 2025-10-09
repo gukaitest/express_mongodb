@@ -1,5 +1,6 @@
 const WebVitals = require('../models/WebVitals');
 const ErrorMonitor = require('../models/ErrorMonitor');
+const UserBehavior = require('../models/UserBehavior');
 
 exports.reportWebVitals = async (req, res) => {
   try {
@@ -810,6 +811,674 @@ exports.getTopErrors = async (req, res) => {
       code: '0000',
       msg: '热门错误获取成功',
       data: topErrors,
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// ============== 用户行为监控相关方法 ==============
+
+// 创建用户行为记录
+exports.createUserBehavior = async (req, res) => {
+  try {
+    const behaviorData = {
+      ...req.body,
+      timestamp: req.body.timestamp || Date.now(),
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+
+    const behavior = await UserBehavior.create(behaviorData);
+    res.status(201).json({
+      code: '0000',
+      msg: '用户行为记录创建成功',
+      data: behavior,
+    });
+  } catch (err) {
+    res.status(400).json({
+      code: '4001',
+      msg: '创建失败',
+      error: err.message,
+    });
+  }
+};
+
+// 批量创建用户行为记录
+exports.createBatchUserBehaviors = async (req, res) => {
+  try {
+    const { behaviors } = req.body;
+
+    if (!Array.isArray(behaviors) || behaviors.length === 0) {
+      return res.status(400).json({
+        code: '4001',
+        msg: '用户行为数据格式不正确',
+      });
+    }
+
+    const behaviorData = behaviors.map((behavior) => ({
+      ...behavior,
+      timestamp: behavior.timestamp || Date.now(),
+      created_at: new Date(),
+      updated_at: new Date(),
+    }));
+
+    const createdBehaviors = await UserBehavior.insertMany(behaviorData);
+
+    res.status(201).json({
+      code: '0000',
+      msg: '批量用户行为记录创建成功',
+      data: {
+        count: createdBehaviors.length,
+        behaviors: createdBehaviors,
+      },
+    });
+  } catch (err) {
+    res.status(400).json({
+      code: '4001',
+      msg: '批量创建失败',
+      error: err.message,
+    });
+  }
+};
+
+// 获取用户行为列表
+exports.getUserBehaviors = async (req, res) => {
+  try {
+    const page = parseInt(req.query.pageNo) || 1;
+    const limit = parseInt(req.query.pageSize) || 10;
+    const skip = (page - 1) * limit;
+
+    // 构建查询条件
+    const query = {};
+
+    // 行为类型筛选
+    if (req.query.type) {
+      query.type = req.query.type;
+    }
+
+    // 用户ID筛选
+    if (req.query.userId) {
+      query.userId = req.query.userId;
+    }
+
+    // 会话ID筛选
+    if (req.query.sessionId) {
+      query.sessionId = req.query.sessionId;
+    }
+
+    // URL筛选
+    if (req.query.url) {
+      query.url = { $regex: new RegExp(req.query.url, 'i') };
+    }
+
+    // 行为动作筛选
+    if (req.query.action) {
+      query.action = req.query.action;
+    }
+
+    // 重要级别筛选
+    if (req.query.level) {
+      query.level = req.query.level;
+    }
+
+    // 时间范围筛选
+    if (req.query.startTime && req.query.endTime) {
+      query.timestamp = {
+        $gte: parseInt(req.query.startTime),
+        $lte: parseInt(req.query.endTime),
+      };
+    }
+
+    const [behaviors, total] = await Promise.all([
+      UserBehavior.find(query).sort({ timestamp: -1 }).skip(skip).limit(limit),
+      UserBehavior.countDocuments(query),
+    ]);
+
+    res.json({
+      code: '0000',
+      msg: '请求成功',
+      data: {
+        list: behaviors,
+        total,
+        page,
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// 根据ID获取用户行为详情
+exports.getUserBehaviorById = async (req, res) => {
+  try {
+    const behavior = await UserBehavior.findById(req.params.id);
+
+    if (!behavior) {
+      return res.status(404).json({
+        code: '4004',
+        msg: '用户行为记录不存在',
+      });
+    }
+
+    res.json({
+      code: '0000',
+      msg: '请求成功',
+      data: behavior,
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// 获取用户行为统计信息
+exports.getUserBehaviorStats = async (req, res) => {
+  try {
+    const { startTime, endTime } = req.query;
+
+    const matchQuery = {};
+    if (startTime && endTime) {
+      matchQuery.timestamp = {
+        $gte: parseInt(startTime),
+        $lte: parseInt(endTime),
+      };
+    }
+
+    const stats = await UserBehavior.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: null,
+          totalEvents: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+          uniqueSessions: { $addToSet: '$sessionId' },
+          behaviorTypes: { $push: '$type' },
+          actions: { $push: '$action' },
+          levels: { $push: '$level' },
+          avgPageLoadTime: { $avg: '$pageLoadTime' },
+          maxPageLoadTime: { $max: '$pageLoadTime' },
+          minPageLoadTime: { $min: '$pageLoadTime' },
+        },
+      },
+      {
+        $project: {
+          totalEvents: 1,
+          uniqueUserCount: { $size: '$uniqueUsers' },
+          uniqueSessionCount: { $size: '$uniqueSessions' },
+          avgPageLoadTime: 1,
+          maxPageLoadTime: 1,
+          minPageLoadTime: 1,
+          typeStats: {
+            $reduce: {
+              input: '$behaviorTypes',
+              initialValue: {},
+              in: {
+                $mergeObjects: [
+                  '$$value',
+                  {
+                    $arrayToObject: [
+                      [
+                        {
+                          k: '$$this',
+                          v: {
+                            $cond: [
+                              { $ifNull: ['$$value.$$this', false] },
+                              { $add: ['$$value.$$this', 1] },
+                              1,
+                            ],
+                          },
+                        },
+                      ],
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          actionStats: {
+            $reduce: {
+              input: '$actions',
+              initialValue: {},
+              in: {
+                $mergeObjects: [
+                  '$$value',
+                  {
+                    $arrayToObject: [
+                      [
+                        {
+                          k: '$$this',
+                          v: {
+                            $cond: [
+                              { $ifNull: ['$$value.$$this', false] },
+                              { $add: ['$$value.$$this', 1] },
+                              1,
+                            ],
+                          },
+                        },
+                      ],
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          levelStats: {
+            $reduce: {
+              input: '$levels',
+              initialValue: {},
+              in: {
+                $mergeObjects: [
+                  '$$value',
+                  {
+                    $arrayToObject: [
+                      [
+                        {
+                          k: '$$this',
+                          v: {
+                            $cond: [
+                              { $ifNull: ['$$value.$$this', false] },
+                              { $add: ['$$value.$$this', 1] },
+                              1,
+                            ],
+                          },
+                        },
+                      ],
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    res.json({
+      code: '0000',
+      msg: '统计信息获取成功',
+      data: stats[0] || {
+        totalEvents: 0,
+        uniqueUserCount: 0,
+        uniqueSessionCount: 0,
+        avgPageLoadTime: 0,
+        maxPageLoadTime: 0,
+        minPageLoadTime: 0,
+        typeStats: {},
+        actionStats: {},
+        levelStats: {},
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// 获取热门用户行为（按频率排序）
+exports.getTopUserBehaviors = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const { startTime, endTime } = req.query;
+
+    const matchQuery = {};
+    if (startTime && endTime) {
+      matchQuery.timestamp = {
+        $gte: parseInt(startTime),
+        $lte: parseInt(endTime),
+      };
+    }
+
+    const topBehaviors = await UserBehavior.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            action: '$action',
+            url: '$url',
+          },
+          count: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+          uniqueSessions: { $addToSet: '$sessionId' },
+          lastOccurred: { $max: '$timestamp' },
+          firstOccurred: { $min: '$timestamp' },
+          avgPageLoadTime: { $avg: '$pageLoadTime' },
+        },
+      },
+      {
+        $sort: { count: -1 },
+      },
+      {
+        $limit: limit,
+      },
+      {
+        $project: {
+          type: '$_id.type',
+          action: '$_id.action',
+          url: '$_id.url',
+          count: 1,
+          uniqueUserCount: { $size: '$uniqueUsers' },
+          uniqueSessionCount: { $size: '$uniqueSessions' },
+          lastOccurred: 1,
+          firstOccurred: 1,
+          avgPageLoadTime: 1,
+          frequency: {
+            $divide: [
+              '$count',
+              {
+                $divide: [
+                  { $subtract: ['$lastOccurred', '$firstOccurred'] },
+                  86400000,
+                ],
+              },
+            ],
+          }, // 每天平均事件次数
+        },
+      },
+    ]);
+
+    res.json({
+      code: '0000',
+      msg: '热门用户行为获取成功',
+      data: topBehaviors,
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// 获取用户行为路径分析
+exports.getUserBehaviorPaths = async (req, res) => {
+  try {
+    const { userId, sessionId, startTime, endTime } = req.query;
+    const limit = parseInt(req.query.limit) || 50;
+
+    const matchQuery = {};
+    if (userId) matchQuery.userId = userId;
+    if (sessionId) matchQuery.sessionId = sessionId;
+    if (startTime && endTime) {
+      matchQuery.timestamp = {
+        $gte: parseInt(startTime),
+        $lte: parseInt(endTime),
+      };
+    }
+
+    const paths = await UserBehavior.aggregate([
+      { $match: matchQuery },
+      {
+        $sort: { timestamp: 1 },
+      },
+      {
+        $group: {
+          _id: sessionId ? '$sessionId' : '$userId',
+          userId: { $first: '$userId' },
+          events: {
+            $push: {
+              type: '$type',
+              action: '$action',
+              url: '$url',
+              timestamp: '$timestamp',
+              pageLoadTime: '$pageLoadTime',
+              level: '$level',
+            },
+          },
+          startTime: { $min: '$timestamp' },
+          endTime: { $max: '$timestamp' },
+          totalEvents: { $sum: 1 },
+          totalPageLoadTime: { $sum: '$pageLoadTime' },
+        },
+      },
+      {
+        $project: {
+          sessionId: '$_id',
+          userId: 1,
+          events: 1,
+          startTime: 1,
+          endTime: 1,
+          totalEvents: 1,
+          totalPageLoadTime: 1,
+          avgPageLoadTime: {
+            $cond: [
+              { $gt: ['$totalEvents', 0] },
+              { $divide: ['$totalPageLoadTime', '$totalEvents'] },
+              0,
+            ],
+          },
+          duration: { $subtract: ['$endTime', '$startTime'] },
+        },
+      },
+      {
+        $sort: { startTime: -1 },
+      },
+      {
+        $limit: limit,
+      },
+    ]);
+
+    res.json({
+      code: '0000',
+      msg: '用户行为路径获取成功',
+      data: paths,
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// 获取漏斗分析数据（简化版本，基于URL路径）
+exports.getFunnelAnalysis = async (req, res) => {
+  try {
+    const { urls, startTime, endTime } = req.query;
+
+    if (!urls) {
+      return res.status(400).json({
+        code: '4001',
+        msg: 'URL列表不能为空（使用逗号分隔多个URL）',
+      });
+    }
+
+    const urlList = urls.split(',').map((url) => url.trim());
+    const matchQuery = {};
+
+    if (startTime && endTime) {
+      matchQuery.timestamp = {
+        $gte: parseInt(startTime),
+        $lte: parseInt(endTime),
+      };
+    }
+
+    // 基于URL分析用户路径转化
+    const funnelStats = [];
+
+    for (let i = 0; i < urlList.length; i++) {
+      const stepUrl = urlList[i];
+      const stepQuery = {
+        ...matchQuery,
+        url: { $regex: new RegExp(stepUrl, 'i') },
+      };
+
+      const stepData = await UserBehavior.aggregate([
+        { $match: stepQuery },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+            uniqueUsers: { $addToSet: '$userId' },
+            uniqueSessions: { $addToSet: '$sessionId' },
+          },
+        },
+      ]);
+
+      const data = stepData[0] || {
+        count: 0,
+        uniqueUsers: [],
+        uniqueSessions: [],
+      };
+
+      funnelStats.push({
+        step: i + 1,
+        url: stepUrl,
+        count: data.count,
+        uniqueUserCount: data.uniqueUsers.length,
+        uniqueSessionCount: data.uniqueSessions.length,
+      });
+    }
+
+    // 计算转化率和流失率
+    const enrichedStats = funnelStats.map((step, index) => {
+      const previousStep = index > 0 ? funnelStats[index - 1] : null;
+      const conversionRate = previousStep
+        ? (step.count / previousStep.count) * 100
+        : 100;
+      const dropOffRate = previousStep
+        ? ((previousStep.count - step.count) / previousStep.count) * 100
+        : 0;
+
+      return {
+        ...step,
+        conversionRate: conversionRate.toFixed(2),
+        dropOffRate: dropOffRate.toFixed(2),
+        dropOffCount: previousStep ? previousStep.count - step.count : 0,
+      };
+    });
+
+    res.json({
+      code: '0000',
+      msg: '漏斗分析数据获取成功',
+      data: {
+        steps: enrichedStats,
+        totalSteps: enrichedStats.length,
+        overallConversionRate:
+          enrichedStats.length > 0 && funnelStats[0].count > 0
+            ? (
+                (funnelStats[funnelStats.length - 1].count /
+                  funnelStats[0].count) *
+                100
+              ).toFixed(2)
+            : '0.00',
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// 获取热力图数据（简化版本，基于URL和行为类型）
+exports.getHeatmapData = async (req, res) => {
+  try {
+    const { url, type, startTime, endTime } = req.query;
+
+    const matchQuery = {};
+    if (url) matchQuery.url = { $regex: new RegExp(url, 'i') };
+    if (type) matchQuery.type = type;
+    if (startTime && endTime) {
+      matchQuery.timestamp = {
+        $gte: parseInt(startTime),
+        $lte: parseInt(endTime),
+      };
+    }
+
+    const heatmapData = await UserBehavior.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            url: '$url',
+            type: '$type',
+            action: '$action',
+          },
+          count: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+          uniqueSessions: { $addToSet: '$sessionId' },
+          avgPageLoadTime: { $avg: '$pageLoadTime' },
+        },
+      },
+      {
+        $project: {
+          url: '$_id.url',
+          type: '$_id.type',
+          action: '$_id.action',
+          count: 1,
+          uniqueUserCount: { $size: '$uniqueUsers' },
+          uniqueSessionCount: { $size: '$uniqueSessions' },
+          avgPageLoadTime: 1,
+          intensity: {
+            $cond: [
+              { $gte: ['$count', 100] },
+              'high',
+              {
+                $cond: [{ $gte: ['$count', 50] }, 'medium', 'low'],
+              },
+            ],
+          },
+        },
+      },
+      {
+        $sort: { count: -1 },
+      },
+      {
+        $limit: 100,
+      },
+    ]);
+
+    res.json({
+      code: '0000',
+      msg: '热力图数据获取成功',
+      data: heatmapData,
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: '5000',
+      msg: '服务器错误',
+      error: err.message,
+    });
+  }
+};
+
+// 删除用户行为记录
+exports.deleteUserBehavior = async (req, res) => {
+  try {
+    const behavior = await UserBehavior.findByIdAndDelete(req.params.id);
+
+    if (!behavior) {
+      return res.status(404).json({
+        code: '4004',
+        msg: '用户行为记录不存在',
+      });
+    }
+
+    res.json({
+      code: '0000',
+      msg: '删除成功',
     });
   } catch (err) {
     res.status(500).json({
