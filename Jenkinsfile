@@ -26,6 +26,7 @@ pipeline {
                 docker run -d \
                     --name ${CONTAINER_NAME} \
                     -p 8084:3000 \
+                    -e NODE_ENV=production \
                     -e DB_URL=mongodb://gukai:Gk324376@47.103.169.121:27017/product_info?authSource=admin \
                     ${DOCKER_IMAGE}
                 '''
