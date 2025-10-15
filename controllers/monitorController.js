@@ -4,6 +4,13 @@ const UserBehavior = require('../models/UserBehavior');
 
 exports.reportWebVitals = async (req, res) => {
   try {
+    // 检查集合数量，如果超过200条则清空
+    const count = await WebVitals.countDocuments();
+    if (count >= 200) {
+      await WebVitals.deleteMany({});
+      console.log('WebVitals集合已清空，原记录数:', count);
+    }
+
     // 对 MemoryLeak 数据进行特殊处理
     if (req.body.name === 'MemoryLeak') {
       // 验证 MemoryLeak 特定字段
@@ -115,6 +122,162 @@ exports.reportWebVitals = async (req, res) => {
     }
 
     res.status(400).json({
+      error: err.message,
+      details: err.name === 'ValidationError' ? err.errors : undefined,
+    });
+  }
+};
+
+// 批量上报 WebVitals 数据
+exports.reportBatchWebVitals = async (req, res) => {
+  try {
+    const { batch, batchSize, batchTimestamp } = req.body;
+
+    // 验证批量数据格式
+    if (!Array.isArray(batch) || batch.length === 0) {
+      return res.status(400).json({
+        code: '4001',
+        msg: 'WebVitals批量数据格式不正确，batch字段必须是非空数组',
+      });
+    }
+
+    // 检查集合数量，如果超过200条则清空
+    const count = await WebVitals.countDocuments();
+    if (count >= 200) {
+      await WebVitals.deleteMany({});
+      console.log('WebVitals集合已清空，原记录数:', count);
+    }
+
+    // 处理每个 WebVitals 数据
+    const processedData = batch.map((item) => {
+      // 验证必填字段
+      if (
+        !item.name ||
+        item.value === undefined ||
+        !item.rating ||
+        !item.timestamp ||
+        !item.url
+      ) {
+        throw new Error(`数据项缺少必填字段: ${JSON.stringify(item)}`);
+      }
+
+      // 构建基础数据对象
+      const dataItem = {
+        name: item.name,
+        value: item.value,
+        rating: item.rating,
+        delta: item.delta || 0,
+        id: item.id,
+        navigationType: item.navigationType,
+        timestamp: item.timestamp,
+        url: item.url,
+        userAgent: item.userAgent,
+        environment: item.environment,
+      };
+
+      // 根据不同类型处理特定字段
+      switch (item.name) {
+        case 'MemoryLeak':
+          // 处理内存泄漏数据
+          if (item.memoryLeakData) {
+            dataItem.memoryLeakData = item.memoryLeakData;
+          }
+          if (item.memoryStats) {
+            dataItem.memoryStats = item.memoryStats;
+          }
+          // 如果有 memoryUsage 和 memoryLimit，保留旧逻辑兼容性
+          if (item.memoryUsage !== undefined) {
+            dataItem.memoryUsage = item.memoryUsage;
+          }
+          if (item.memoryLimit !== undefined) {
+            dataItem.memoryLimit = item.memoryLimit;
+          }
+          if (item.leakType) {
+            dataItem.leakType = item.leakType;
+          }
+          if (item.leakSize !== undefined) {
+            dataItem.leakSize = item.leakSize;
+          }
+          if (item.leakCount !== undefined) {
+            dataItem.leakCount = item.leakCount;
+          }
+          if (item.performanceMemory) {
+            dataItem.performanceMemory = item.performanceMemory;
+          }
+          break;
+
+        case 'LongTask':
+          // 处理长任务数据
+          if (item.longTaskData) {
+            dataItem.longTaskData = item.longTaskData;
+          }
+          if (item.longTaskStats) {
+            dataItem.longTaskStats = item.longTaskStats;
+          }
+          break;
+
+        case 'MemoryLeakSummary':
+          // 处理内存泄漏汇总数据
+          if (item.summaryData) {
+            dataItem.summaryData = item.summaryData;
+          }
+          break;
+
+        case 'TTFB':
+        case 'FCP':
+        case 'LCP':
+        case 'FID':
+        case 'CLS':
+        case 'INP':
+          // 标准 Web Vitals 指标，保留基础字段即可
+          break;
+
+        default:
+          // 其他类型，保留所有额外字段
+          Object.keys(item).forEach((key) => {
+            if (!dataItem.hasOwnProperty(key)) {
+              dataItem[key] = item[key];
+            }
+          });
+      }
+
+      return dataItem;
+    });
+
+    const createdWebVitals = await WebVitals.insertMany(processedData);
+
+    res.status(201).json({
+      code: '0000',
+      msg: '批量WebVitals数据上传成功',
+      data: {
+        count: createdWebVitals.length,
+        batchSize: batchSize || batch.length,
+        batchTimestamp: batchTimestamp || Date.now(),
+        webvitals: createdWebVitals,
+      },
+    });
+  } catch (err) {
+    console.error('批量WebVitals创建失败 - 详细错误信息:');
+    console.error('错误类型:', err.name);
+    console.error('错误消息:', err.message);
+    console.error('错误堆栈:', err.stack);
+
+    // 如果是验证错误，打印具体的验证错误详情
+    if (err.name === 'ValidationError') {
+      console.error('验证错误详情:');
+      Object.keys(err.errors).forEach((key) => {
+        console.error(`字段 ${key}:`, err.errors[key].message);
+      });
+    }
+
+    // 如果是重复键错误
+    if (err.code === 11000) {
+      console.error('重复键错误:', err.keyValue);
+    }
+
+    res.status(400).json({
+      code: '4001',
+      msg: '批量上传失败',
       error: err.message,
       details: err.name === 'ValidationError' ? err.errors : undefined,
     });
@@ -374,6 +537,13 @@ const mapErrorType = (type) => {
 // 创建错误记录
 exports.createError = async (req, res) => {
   try {
+    // 检查集合数量，如果超过200条则清空
+    const count = await ErrorMonitor.countDocuments();
+    if (count >= 200) {
+      await ErrorMonitor.deleteMany({});
+      console.log('ErrorMonitor集合已清空，原记录数:', count);
+    }
+
     const errorData = {
       ...req.body,
       // 使用类型映射函数处理错误类型
@@ -401,23 +571,156 @@ exports.createError = async (req, res) => {
 // 批量创建错误记录
 exports.createBatchErrors = async (req, res) => {
   try {
-    const { errors } = req.body;
+    const { batch, batchSize, batchTimestamp } = req.body;
 
-    if (!Array.isArray(errors) || errors.length === 0) {
+    // 验证批量数据格式
+    if (!Array.isArray(batch) || batch.length === 0) {
       return res.status(400).json({
         code: '4001',
-        msg: '错误数据格式不正确',
+        msg: '错误批量数据格式不正确，batch字段必须是非空数组',
       });
     }
 
-    const errorData = errors.map((error) => ({
-      ...error,
-      // 使用类型映射函数处理错误类型
-      type: mapErrorType(error.type),
-      timestamp: error.timestamp || Date.now(),
-      created_at: new Date(),
-      updated_at: new Date(),
-    }));
+    // 检查集合数量，如果超过200条则清空
+    const count = await ErrorMonitor.countDocuments();
+    if (count >= 200) {
+      await ErrorMonitor.deleteMany({});
+      console.log('ErrorMonitor集合已清空，原记录数:', count);
+    }
+
+    // 处理每个错误数据
+    const errorData = batch.map((error) => {
+      // 验证必填字段
+      if (!error.type || !error.message || !error.url || !error.timestamp) {
+        throw new Error(`错误数据项缺少必填字段: ${JSON.stringify(error)}`);
+      }
+
+      // 构建基础数据对象
+      const dataItem = {
+        type: mapErrorType(error.type), // 使用类型映射函数
+        message: error.message,
+        url: error.url,
+        timestamp: error.timestamp,
+        sessionId: error.sessionId,
+        userId: error.userId,
+        errorId: error.errorId,
+        userAgent: error.userAgent,
+        level: error.level || 'medium',
+        customData: error.customData || {},
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+
+      // 根据不同错误类型添加特定字段
+      switch (error.type) {
+        case 'javascript':
+        case 'js':
+          // JavaScript 运行时错误
+          if (error.stack) {
+            dataItem.stack = error.stack;
+          }
+          if (error.filename) {
+            dataItem.filename = error.filename;
+          }
+          if (error.lineno !== undefined) {
+            dataItem.lineno = error.lineno;
+          }
+          if (error.colno !== undefined) {
+            dataItem.colno = error.colno;
+          }
+          break;
+
+        case 'vue':
+        case 'react':
+        case 'angular':
+          // 框架错误
+          if (error.stack) {
+            dataItem.stack = error.stack;
+          }
+          if (error.componentName) {
+            dataItem.componentName = error.componentName;
+          }
+          if (error.componentStack) {
+            dataItem.componentStack = error.componentStack;
+          }
+          if (error.propsData) {
+            dataItem.propsData = error.propsData;
+          }
+          if (error.route) {
+            dataItem.route = error.route;
+          }
+          if (error.routeParams) {
+            dataItem.routeParams = error.routeParams;
+          }
+          if (error.routeQuery) {
+            dataItem.routeQuery = error.routeQuery;
+          }
+          break;
+
+        case 'promise':
+          // Promise 未捕获错误
+          if (error.stack) {
+            dataItem.stack = error.stack;
+          }
+          if (error.reason) {
+            dataItem.reason = error.reason;
+          }
+          break;
+
+        case 'resource':
+          // 资源加载错误
+          if (error.target) {
+            dataItem.target = error.target;
+          }
+          if (error.tagName) {
+            dataItem.tagName = error.tagName;
+          }
+          if (error.src) {
+            dataItem.src = error.src;
+          }
+          if (error.href) {
+            dataItem.href = error.href;
+          }
+          break;
+
+        case 'ajax':
+        case 'fetch':
+        case 'xhr':
+        case 'http':
+        case 'api':
+        case 'network':
+          // 网络请求错误（会被映射为 network）
+          if (error.stack) {
+            dataItem.stack = error.stack;
+          }
+          if (error.status !== undefined) {
+            dataItem.status = error.status;
+          }
+          if (error.statusText) {
+            dataItem.statusText = error.statusText;
+          }
+          if (error.method) {
+            dataItem.method = error.method;
+          }
+          if (error.requestUrl) {
+            dataItem.requestUrl = error.requestUrl;
+          }
+          if (error.response) {
+            dataItem.response = error.response;
+          }
+          break;
+
+        default:
+          // 其他类型，保留所有额外字段
+          Object.keys(error).forEach((key) => {
+            if (!dataItem.hasOwnProperty(key) && key !== 'type') {
+              dataItem[key] = error[key];
+            }
+          });
+      }
+
+      return dataItem;
+    });
 
     const createdErrors = await ErrorMonitor.insertMany(errorData);
 
@@ -426,14 +729,30 @@ exports.createBatchErrors = async (req, res) => {
       msg: '批量错误记录创建成功',
       data: {
         count: createdErrors.length,
+        batchSize: batchSize || batch.length,
+        batchTimestamp: batchTimestamp || Date.now(),
         errors: createdErrors,
       },
     });
   } catch (err) {
+    console.error('批量错误创建失败 - 详细错误信息:');
+    console.error('错误类型:', err.name);
+    console.error('错误消息:', err.message);
+    console.error('错误堆栈:', err.stack);
+
+    // 如果是验证错误，打印具体的验证错误详情
+    if (err.name === 'ValidationError') {
+      console.error('验证错误详情:');
+      Object.keys(err.errors).forEach((key) => {
+        console.error(`字段 ${key}:`, err.errors[key].message);
+      });
+    }
+
     res.status(400).json({
       code: '4001',
       msg: '批量创建失败',
       error: err.message,
+      details: err.name === 'ValidationError' ? err.errors : undefined,
     });
   }
 };
@@ -826,6 +1145,13 @@ exports.getTopErrors = async (req, res) => {
 // 创建用户行为记录
 exports.createUserBehavior = async (req, res) => {
   try {
+    // 检查集合数量，如果超过200条则清空
+    const count = await UserBehavior.countDocuments();
+    if (count >= 200) {
+      await UserBehavior.deleteMany({});
+      console.log('UserBehavior集合已清空，原记录数:', count);
+    }
+
     const behaviorData = {
       ...req.body,
       timestamp: req.body.timestamp || Date.now(),
@@ -851,21 +1177,144 @@ exports.createUserBehavior = async (req, res) => {
 // 批量创建用户行为记录
 exports.createBatchUserBehaviors = async (req, res) => {
   try {
-    const { behaviors } = req.body;
+    const { batch, batchSize, batchTimestamp } = req.body;
 
-    if (!Array.isArray(behaviors) || behaviors.length === 0) {
+    // 验证批量数据格式
+    if (!Array.isArray(batch) || batch.length === 0) {
       return res.status(400).json({
         code: '4001',
-        msg: '用户行为数据格式不正确',
+        msg: '用户行为批量数据格式不正确，batch字段必须是非空数组',
       });
     }
 
-    const behaviorData = behaviors.map((behavior) => ({
-      ...behavior,
-      timestamp: behavior.timestamp || Date.now(),
-      created_at: new Date(),
-      updated_at: new Date(),
-    }));
+    // 检查集合数量，如果超过200条则清空
+    const count = await UserBehavior.countDocuments();
+    if (count >= 200) {
+      await UserBehavior.deleteMany({});
+      console.log('UserBehavior集合已清空，原记录数:', count);
+    }
+
+    // 处理每个用户行为数据
+    const behaviorData = batch.map((behavior) => {
+      // 验证必填字段
+      if (
+        !behavior.type ||
+        !behavior.action ||
+        !behavior.url ||
+        !behavior.timestamp
+      ) {
+        throw new Error(
+          `用户行为数据项缺少必填字段: ${JSON.stringify(behavior)}`
+        );
+      }
+
+      // 构建数据对象
+      const dataItem = {
+        type: behavior.type,
+        action: behavior.action,
+        url: behavior.url,
+        timestamp: behavior.timestamp,
+        sessionId: behavior.sessionId,
+        userId: behavior.userId,
+        behaviorId: behavior.behaviorId,
+        userAgent: behavior.userAgent,
+        level: behavior.level || 'normal',
+        pageLoadTime: behavior.pageLoadTime,
+        customData: behavior.customData || {},
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+
+      // 根据不同类型添加特定字段
+      switch (behavior.type) {
+        case 'session_start':
+        case 'session_end':
+          // 会话相关行为
+          if (behavior.sessionDuration !== undefined) {
+            dataItem.sessionDuration = behavior.sessionDuration;
+          }
+          break;
+
+        case 'page_view':
+          // 页面浏览行为
+          if (behavior.pageTitle) {
+            dataItem.pageTitle = behavior.pageTitle;
+          }
+          if (behavior.referrer) {
+            dataItem.referrer = behavior.referrer;
+          }
+          if (behavior.viewportWidth !== undefined) {
+            dataItem.viewportWidth = behavior.viewportWidth;
+          }
+          if (behavior.viewportHeight !== undefined) {
+            dataItem.viewportHeight = behavior.viewportHeight;
+          }
+          if (behavior.target) {
+            dataItem.target = behavior.target;
+          }
+          break;
+
+        case 'click':
+          // 点击行为
+          if (behavior.target) {
+            dataItem.target = behavior.target;
+          }
+          if (behavior.targetText) {
+            dataItem.targetText = behavior.targetText;
+          }
+          if (behavior.xpath) {
+            dataItem.xpath = behavior.xpath;
+          }
+          if (behavior.coordinates) {
+            dataItem.coordinates = behavior.coordinates;
+          }
+          break;
+
+        case 'scroll':
+          // 滚动行为
+          if (behavior.scrollDepth !== undefined) {
+            dataItem.scrollDepth = behavior.scrollDepth;
+          }
+          if (behavior.scrollPosition !== undefined) {
+            dataItem.scrollPosition = behavior.scrollPosition;
+          }
+          break;
+
+        case 'input':
+        case 'form_submit':
+          // 输入和表单提交行为
+          if (behavior.formId) {
+            dataItem.formId = behavior.formId;
+          }
+          if (behavior.fieldName) {
+            dataItem.fieldName = behavior.fieldName;
+          }
+          if (behavior.target) {
+            dataItem.target = behavior.target;
+          }
+          break;
+
+        case 'error':
+          // 错误行为
+          if (behavior.errorMessage) {
+            dataItem.errorMessage = behavior.errorMessage;
+          }
+          if (behavior.errorStack) {
+            dataItem.errorStack = behavior.errorStack;
+          }
+          break;
+
+        default:
+          // 其他类型，保留所有额外字段
+          Object.keys(behavior).forEach((key) => {
+            if (!dataItem.hasOwnProperty(key)) {
+              dataItem[key] = behavior[key];
+            }
+          });
+      }
+
+      return dataItem;
+    });
 
     const createdBehaviors = await UserBehavior.insertMany(behaviorData);
 
@@ -874,14 +1323,30 @@ exports.createBatchUserBehaviors = async (req, res) => {
       msg: '批量用户行为记录创建成功',
       data: {
         count: createdBehaviors.length,
+        batchSize: batchSize || batch.length,
+        batchTimestamp: batchTimestamp || Date.now(),
         behaviors: createdBehaviors,
       },
     });
   } catch (err) {
+    console.error('批量用户行为创建失败 - 详细错误信息:');
+    console.error('错误类型:', err.name);
+    console.error('错误消息:', err.message);
+    console.error('错误堆栈:', err.stack);
+
+    // 如果是验证错误，打印具体的验证错误详情
+    if (err.name === 'ValidationError') {
+      console.error('验证错误详情:');
+      Object.keys(err.errors).forEach((key) => {
+        console.error(`字段 ${key}:`, err.errors[key].message);
+      });
+    }
+
     res.status(400).json({
       code: '4001',
       msg: '批量创建失败',
       error: err.message,
+      details: err.name === 'ValidationError' ? err.errors : undefined,
     });
   }
 };
